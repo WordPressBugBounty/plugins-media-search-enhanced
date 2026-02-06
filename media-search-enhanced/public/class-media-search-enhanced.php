@@ -28,7 +28,7 @@ class Media_Search_Enhanced {
 	 *
 	 * @var     string
 	 */
-	const VERSION = '0.8.0';
+	const VERSION = '0.9.2';
 
 	/**
 	 *
@@ -153,11 +153,14 @@ class Media_Search_Enhanced {
 				$pieces['where'] .= $wpdb->prepare( " AND t.element_type='post_attachment' AND t.language_code = %s", $lang );
 			}
 
-			if ( ! empty( $vars['post_parent'] ) ) {
-				$pieces['where'] .= " AND $wpdb->posts.post_parent = " . $vars['post_parent'];
-			} elseif ( isset( $vars['post_parent'] ) && 0 === $vars['post_parent'] ) {
-				// Get unattached attachments
-				$pieces['where'] .= " AND $wpdb->posts.post_parent = 0";
+			if ( isset( $vars['post_parent'] ) ) {
+				$post_parent = absint( $vars['post_parent'] );
+				if ( $post_parent > 0 ) {
+					$pieces['where'] .= $wpdb->prepare( " AND $wpdb->posts.post_parent = %d", $post_parent );
+				} elseif ( 0 === $post_parent ) {
+					// Get unattached attachments
+					$pieces['where'] .= $wpdb->prepare( " AND $wpdb->posts.post_parent = %d", 0 );
+				}
 			}
 
 			if ( ! empty( $vars['post_mime_type'] ) ) {
@@ -189,10 +192,10 @@ class Media_Search_Enhanced {
 			// search for keyword "s"
 			$like = '%' . $wpdb->esc_like( $vars['s'] ) . '%';
 			$pieces['where'] .= $wpdb->prepare( " AND ( ($wpdb->posts.ID LIKE %s) OR ($wpdb->posts.post_title LIKE %s) OR ($wpdb->posts.guid LIKE %s) OR ($wpdb->posts.post_content LIKE %s) OR ($wpdb->posts.post_excerpt LIKE %s)", $like, $like, $like, $like, $like );
-			$pieces['where'] .= $wpdb->prepare( " OR ($wpdb->postmeta.meta_key = '_wp_attachment_image_alt' AND $wpdb->postmeta.meta_value LIKE %s)", $like );
-			$pieces['where'] .= $wpdb->prepare( " OR ($wpdb->postmeta.meta_key = '_wp_attached_file' AND $wpdb->postmeta.meta_value LIKE %s)", $like );
+			$pieces['where'] .= $wpdb->prepare( " OR (mse_pm.meta_key = '_wp_attachment_image_alt' AND mse_pm.meta_value LIKE %s)", $like );
+			$pieces['where'] .= $wpdb->prepare( " OR (mse_pm.meta_key = '_wp_attached_file' AND mse_pm.meta_value LIKE %s)", $like );
 
-			// Get taxes for attachements
+			// Get taxes for attachments
 			$taxes = get_object_taxonomies( 'attachment' );
 			if ( ! empty( $taxes ) ) {
 				$pieces['where'] .= $wpdb->prepare( " OR (tter.slug LIKE %s) OR (ttax.description LIKE %s) OR (tter.name LIKE %s)", $like, $like, $like );
@@ -200,14 +203,15 @@ class Media_Search_Enhanced {
 
 			$pieces['where'] .= " )";
 
-			$pieces['join'] .= " LEFT JOIN $wpdb->postmeta ON $wpdb->posts.ID = $wpdb->postmeta.post_id";
+			$pieces['join'] .= " LEFT JOIN $wpdb->postmeta AS mse_pm ON $wpdb->posts.ID = mse_pm.post_id";
 
-			// Get taxes for attachements
+			// Get taxes for attachments
 			$taxes = get_object_taxonomies( 'attachment' );
 			if ( ! empty( $taxes ) ) {
 				$on = array();
 				foreach ( $taxes as $tax ) {
-					$on[] = "ttax.taxonomy = '$tax'";
+					$tax = sanitize_key( $tax );
+					$on[] = $wpdb->prepare( "ttax.taxonomy = %s", $tax );
 				}
 				$on = '( ' . implode( ' OR ', $on ) . ' )';
 
